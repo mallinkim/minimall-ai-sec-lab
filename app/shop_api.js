@@ -7,7 +7,6 @@ function createApi({ db, env = {}, clock = { now: () => Date.now() }, gateway })
     throw new Error("Missing required API configuration");
   }
 
-  const md5 = (s) => crypto.createHash("md5").update(String(s)).digest("hex");
   const json = (status, body) => ({ status, body });
 
   function signToken(id, exp) {
@@ -43,12 +42,31 @@ function createApi({ db, env = {}, clock = { now: () => Date.now() }, gateway })
     const { method, path, query = {}, body } = req;
     if (method === "POST" && path === "/register") {
       const id = "u" + (db.count("users") + 1);
-      db.insert("users", { id, email: body.email, pwhash: md5(body.password), name: body.name, phone: body.phone, role: "customer" });
+      const salt = crypto.randomBytes(16);
+      const passwordHash = crypto.scryptSync(String(body.password), salt, 64).toString("hex");
+      db.insert("users", {
+        id,
+        email: body.email,
+        pwhash: `${salt.toString("hex")}:${passwordHash}`,
+        name: body.name,
+        phone: body.phone,
+        role: "customer",
+      });
       return json(201, { id });
     }
     if (method === "POST" && path === "/login") {
-      const rows = db.query("SELECT * FROM users WHERE email = ? AND pwhash = ?", [body.email, md5(body.password)]);
+      const rows = db.query("SELECT * FROM users WHERE email = ?", [body.email]);
       if (!rows.length) return json(401, { error: "INVALID_CREDENTIALS" });
+      const [saltHex, hashHex] = String(rows[0].pwhash || "").split(":");
+      if (!/^[0-9a-f]{32}$/i.test(saltHex) || !/^[0-9a-f]{128}$/i.test(hashHex)) {
+        return json(401, { error: "INVALID_CREDENTIALS" });
+      }
+      const salt = Buffer.from(saltHex, "hex");
+      const storedHash = Buffer.from(hashHex, "hex");
+      const candidateHash = crypto.scryptSync(String(body.password), salt, 64);
+      if (candidateHash.length !== storedHash.length || !crypto.timingSafeEqual(candidateHash, storedHash)) {
+        return json(401, { error: "INVALID_CREDENTIALS" });
+      }
       const exp = clock.now() + 24 * 3600 * 1000;
       return json(200, { token: signToken(rows[0].id, exp) });
     }
