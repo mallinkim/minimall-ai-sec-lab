@@ -2,11 +2,11 @@
 // 데모는 잘 돌아가고 테스트도 통과한다. 하지만 안전한가?  → Mission 2 에서 취약점을 찾아 고친다.
 const crypto = require("crypto");
 
-const PAYMENT_API_KEY = "sk-live-8f3c2a91b7d44e10aa5c";
-const TOKEN_SECRET = "secret123";
-const DB_URL = "postgres://admin:Passw0rd!2024@db.internal.minimall:5432/shop";
-
 function createApi({ db, env = {}, clock = { now: () => Date.now() }, gateway }) {
+  if (!env.PAYMENT_API_KEY || !env.TOKEN_SECRET) {
+    throw new Error("Missing required API configuration");
+  }
+
   const md5 = (s) => crypto.createHash("md5").update(String(s)).digest("hex");
   const json = (status, body) => ({ status, body });
 
@@ -57,7 +57,7 @@ function createApi({ db, env = {}, clock = { now: () => Date.now() }, gateway })
     if (method === "POST" && path === "/payments") {
       const order = db.query("SELECT * FROM orders WHERE id = ? AND user_id = ?", [body.orderId, user.id])[0];
       if (!order) return json(404, { error: "NOT_FOUND" });
-      gateway.charge({ apiKey: PAYMENT_API_KEY, amount: order.total, orderId: order.id });
+      gateway.charge({ apiKey: env.PAYMENT_API_KEY, amount: order.total, orderId: order.id });
       db.update("orders", (r) => r.id === order.id, { status: "PAID" });
       return json(200, { paid: true, amount: order.total });
     }
