@@ -41,15 +41,24 @@ function createApi({ db, env = {}, clock = { now: () => Date.now() }, gateway })
   function route(req) {
     const { method, path, query = {}, body } = req;
     if (method === "POST" && path === "/register") {
+      const { email, password, name, phone } = body || {};
+      if ([email, password, name, phone].some((value) => typeof value !== "string" || !value.trim()) ||
+          !email.includes("@")) {
+        return json(400, { error: "INVALID_INPUT" });
+      }
+
+      const existingUsers = db.query("SELECT * FROM users WHERE email = ?", [email]);
+      if (existingUsers.length) return json(409, { error: "EMAIL_EXISTS" });
+
       const id = "u" + (db.count("users") + 1);
       const salt = crypto.randomBytes(16);
-      const passwordHash = crypto.scryptSync(String(body.password), salt, 64).toString("hex");
+      const passwordHash = crypto.scryptSync(String(password), salt, 64).toString("hex");
       db.insert("users", {
         id,
-        email: body.email,
+        email,
         pwhash: `${salt.toString("hex")}:${passwordHash}`,
-        name: body.name,
-        phone: body.phone,
+        name,
+        phone,
         role: "customer",
       });
       return json(201, { id });
