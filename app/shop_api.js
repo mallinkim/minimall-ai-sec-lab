@@ -10,13 +10,32 @@ function createApi({ db, env = {}, clock = { now: () => Date.now() }, gateway })
   const md5 = (s) => crypto.createHash("md5").update(String(s)).digest("hex");
   const json = (status, body) => ({ status, body });
 
+  function signToken(id, exp) {
+    const payload = Buffer.from(JSON.stringify({ id, exp })).toString("base64url");
+    const signature = crypto.createHmac("sha256", env.TOKEN_SECRET).update(payload).digest("base64url");
+    return `${payload}.${signature}`;
+  }
+
   function authUser(req) {
-    const h = (req.headers && req.headers.authorization) || "";
+    const h = (req && req.headers && req.headers.authorization) || "";
+    if (typeof h !== "string") return null;
     const tok = h.replace(/^Bearer\s+/i, "");
     if (!tok) return null;
     try {
-      const id = Buffer.from(tok, "base64").toString().split(":")[0]; // 토큰 = base64("사용자ID:만료시각")
-      return db.query("SELECT * FROM users WHERE id = ?", [id])[0] || null;
+      const parts = tok.split(".");
+      if (parts.length !== 2 || !parts[0] || !parts[1] ||
+          !/^[A-Za-z0-9_-]+$/.test(parts[0]) || !/^[A-Za-z0-9_-]+$/.test(parts[1])) return null;
+      const [payload, signature] = parts;
+      const expectedSignature = crypto.createHmac("sha256", env.TOKEN_SECRET).update(payload).digest();
+      const actualSignature = Buffer.from(signature, "base64url");
+      if (actualSignature.length !== expectedSignature.length ||
+          !crypto.timingSafeEqual(actualSignature, expectedSignature)) return null;
+      const payloadBytes = Buffer.from(payload, "base64url");
+      if (payloadBytes.toString("base64url") !== payload) return null;
+      const claims = JSON.parse(payloadBytes.toString("utf8"));
+      if (!claims || typeof claims.id !== "string" || !claims.id ||
+          !Number.isFinite(claims.exp) || claims.exp <= clock.now()) return null;
+      return db.query("SELECT * FROM users WHERE id = ?", [claims.id])[0] || null;
     } catch (e) { return null; }
   }
 
@@ -31,7 +50,7 @@ function createApi({ db, env = {}, clock = { now: () => Date.now() }, gateway })
       const rows = db.query("SELECT * FROM users WHERE email = ? AND pwhash = ?", [body.email, md5(body.password)]);
       if (!rows.length) return json(401, { error: "INVALID_CREDENTIALS" });
       const exp = clock.now() + 24 * 3600 * 1000;
-      return json(200, { token: Buffer.from(`${rows[0].id}:${exp}`).toString("base64") });
+      return json(200, { token: signToken(rows[0].id, exp) });
     }
     if (method === "GET" && path === "/products") {
       const q = query.q || "";
