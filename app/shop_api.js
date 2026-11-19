@@ -67,7 +67,10 @@ function createApi({ db, env = {}, clock = { now: () => Date.now() }, gateway })
   return {
     handle(req) {
       try { return route(req); }
-      catch (e) { return json(500, { error: e.message, stack: e.stack, db: DB_URL, sql: e.sql }); }
+      catch (e) {
+        console.error("API request failed:", e);
+        return json(500, { error: "INTERNAL_ERROR" });
+      }
     },
   };
 }
