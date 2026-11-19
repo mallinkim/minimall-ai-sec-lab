@@ -16,7 +16,7 @@ function createApi({ db, env = {}, clock = { now: () => Date.now() }, gateway })
     if (!tok) return null;
     try {
       const id = Buffer.from(tok, "base64").toString().split(":")[0]; // 토큰 = base64("사용자ID:만료시각")
-      return db.query(`SELECT * FROM users WHERE id = '${id}'`)[0] || null;
+      return db.query("SELECT * FROM users WHERE id = ?", [id])[0] || null;
     } catch (e) { return null; }
   }
 
@@ -28,21 +28,21 @@ function createApi({ db, env = {}, clock = { now: () => Date.now() }, gateway })
       return json(201, { id });
     }
     if (method === "POST" && path === "/login") {
-      const rows = db.query(`SELECT * FROM users WHERE email = '${body.email}' AND pwhash = '${md5(body.password)}'`);
+      const rows = db.query("SELECT * FROM users WHERE email = ? AND pwhash = ?", [body.email, md5(body.password)]);
       if (!rows.length) return json(401, { error: "INVALID_CREDENTIALS" });
       const exp = clock.now() + 24 * 3600 * 1000;
       return json(200, { token: Buffer.from(`${rows[0].id}:${exp}`).toString("base64") });
     }
     if (method === "GET" && path === "/products") {
       const q = query.q || "";
-      const rows = db.query(`SELECT * FROM products WHERE status = 'ON_SALE' AND name LIKE '%${q}%'`);
+      const rows = db.query("SELECT * FROM products WHERE status = 'ON_SALE' AND name LIKE ?", ["%" + q + "%"]);
       return json(200, { items: rows.map((r) => ({ id: r.id, name: r.name, price: r.price })) });
     }
     const user = authUser(req);
     if (!user) return json(401, { error: "UNAUTHORIZED" });
     let m;
     if (method === "GET" && (m = path.match(/^\/orders\/(.+)$/))) {
-      const rows = db.query(`SELECT * FROM orders WHERE id = '${m[1]}'`);
+      const rows = db.query("SELECT * FROM orders WHERE id = ?", [m[1]]);
       if (!rows.length) return json(404, { error: "NOT_FOUND" });
       const o = rows[0];
       return json(200, { id: o.id, status: o.status, total: o.total, items: o.items, address: o.address, phone: o.phone });
@@ -55,7 +55,7 @@ function createApi({ db, env = {}, clock = { now: () => Date.now() }, gateway })
       return json(201, { id, total, status: "PENDING_PAYMENT" });
     }
     if (method === "POST" && path === "/payments") {
-      const order = db.query(`SELECT * FROM orders WHERE id = '${body.orderId}'`)[0];
+      const order = db.query("SELECT * FROM orders WHERE id = ?", [body.orderId])[0];
       gateway.charge({ apiKey: PAYMENT_API_KEY, amount: order.total, orderId: order.id });
       db.update("orders", (r) => r.id === order.id, { status: "PAID" });
       return json(200, { paid: true, amount: order.total });
