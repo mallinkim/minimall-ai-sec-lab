@@ -42,10 +42,10 @@ function createApi({ db, env = {}, clock = { now: () => Date.now() }, gateway })
     if (!user) return json(401, { error: "UNAUTHORIZED" });
     let m;
     if (method === "GET" && (m = path.match(/^\/orders\/(.+)$/))) {
-      const rows = db.query("SELECT * FROM orders WHERE id = ?", [m[1]]);
+      const rows = db.query("SELECT * FROM orders WHERE id = ? AND user_id = ?", [m[1], user.id]);
       if (!rows.length) return json(404, { error: "NOT_FOUND" });
       const o = rows[0];
-      return json(200, { id: o.id, status: o.status, total: o.total, items: o.items, address: o.address, phone: o.phone });
+      return json(200, { id: o.id, status: o.status, total: o.total, items: o.items, address: o.address });
     }
     if (method === "POST" && path === "/orders") {
       let total = 0;
@@ -55,7 +55,8 @@ function createApi({ db, env = {}, clock = { now: () => Date.now() }, gateway })
       return json(201, { id, total, status: "PENDING_PAYMENT" });
     }
     if (method === "POST" && path === "/payments") {
-      const order = db.query("SELECT * FROM orders WHERE id = ?", [body.orderId])[0];
+      const order = db.query("SELECT * FROM orders WHERE id = ? AND user_id = ?", [body.orderId, user.id])[0];
+      if (!order) return json(404, { error: "NOT_FOUND" });
       gateway.charge({ apiKey: PAYMENT_API_KEY, amount: order.total, orderId: order.id });
       db.update("orders", (r) => r.id === order.id, { status: "PAID" });
       return json(200, { paid: true, amount: order.total });
