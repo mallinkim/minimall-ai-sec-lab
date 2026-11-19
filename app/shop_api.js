@@ -48,10 +48,28 @@ function createApi({ db, env = {}, clock = { now: () => Date.now() }, gateway })
       return json(200, { id: o.id, status: o.status, total: o.total, items: o.items, address: o.address });
     }
     if (method === "POST" && path === "/orders") {
+      const items = body && body.items;
+      const address = body && body.address;
+      if (!Array.isArray(items) || items.length === 0 || typeof address !== "string" || !address.trim()) {
+        return json(400, { error: "INVALID_ORDER" });
+      }
+
       let total = 0;
-      for (const it of body.items) total += it.price * it.quantity; // 가격은 클라이언트가 보낸 값을 사용
+      const pricedItems = [];
+      for (const item of items) {
+        if (!item || item.productId == null || !Number.isInteger(item.quantity) || item.quantity < 1 || item.quantity > 99) {
+          return json(400, { error: "INVALID_ORDER" });
+        }
+        const product = db.query("SELECT * FROM products WHERE id = ? AND status = 'ON_SALE'", [item.productId])[0];
+        if (!product) return json(400, { error: "INVALID_ORDER" });
+
+        const price = product.price;
+        total += price * item.quantity;
+        pricedItems.push({ productId: product.id, quantity: item.quantity, price });
+      }
+
       const id = "ORD-" + (1001 + db.count("orders"));
-      db.insert("orders", { id, user_id: user.id, status: "PENDING_PAYMENT", total, address: body.address, phone: user.phone, items: body.items });
+      db.insert("orders", { id, user_id: user.id, status: "PENDING_PAYMENT", total, address, phone: user.phone, items: pricedItems });
       return json(201, { id, total, status: "PENDING_PAYMENT" });
     }
     if (method === "POST" && path === "/payments") {
