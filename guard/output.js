@@ -7,18 +7,115 @@
 //   LLM 출력은 '신뢰할 수 없는 입력'이다. 허용 목록 · 형식 · 범위를 코드로 확인한다.
 
 function redactPII(text) {
-  // TODO
-  return String(text);
+  const redactSegment = (segment) => {
+    let result = segment.replace(
+      /(?<![A-Za-z0-9_-])(010)(?:[- .]?)(\d{4})(?:[- .]?)(\d{4})(?![A-Za-z0-9_-])/g,
+      (_match, prefix, _middle, last) => `${prefix}-****-${last}`,
+    );
+    result = result.replace(
+      /(?<![A-Za-z0-9_-])(\d{6})-(\d)(\d{6})(?![A-Za-z0-9_-])/g,
+      (_match, date, first) => `${date}-${first}******`,
+    );
+
+    const passesLuhn = (digits) => {
+      let sum = 0;
+      const parity = digits.length % 2;
+      for (let i = 0; i < digits.length; i++) {
+        let digit = Number(digits[i]);
+        if (i % 2 === parity) {
+          digit *= 2;
+          if (digit > 9) digit -= 9;
+        }
+        sum += digit;
+      }
+      return sum % 10 === 0;
+    };
+    result = result.replace(
+      /(?<![A-Za-z0-9_-])(?:\d{13,19}|\d{4}([ -])\d{4}(?:\1\d{4}){1,2}(?:\1\d{1,4})?)(?![A-Za-z0-9_-])/g,
+      (candidate) => {
+        const digits = candidate.replace(/[ -]/g, "");
+        return digits.length >= 13 && digits.length <= 19 && passesLuhn(digits)
+          ? `****-****-****-${digits.slice(-4)}`
+          : candidate;
+      },
+    );
+    return result.replace(
+      /(?<![\p{L}\p{N}._%+-])([\p{L}\p{N}._%+-]+)@([\p{L}\p{N}-]+(?:\.[\p{L}\p{N}-]+)+)(?![\p{L}\p{N}-])/gu,
+      (_match, local, domain) => `${local[0]}***@${domain}`,
+    );
+  };
+
+  const value = String(text);
+  const protectedPattern =
+    /-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----[\s\S]*?(?:-----END [A-Z0-9 ]*PRIVATE KEY-----|$)|(?<![A-Za-z0-9_-])eyJ[A-Za-z0-9_-]{5,}\.eyJ[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{8,}(?![A-Za-z0-9_-])/g;
+  let result = "";
+  let lastIndex = 0;
+  for (const match of value.matchAll(protectedPattern)) {
+    result += redactSegment(value.slice(lastIndex, match.index));
+    result += match[0];
+    lastIndex = match.index + match[0].length;
+  }
+  return result + redactSegment(value.slice(lastIndex));
 }
 
 function redactSecrets(text) {
-  // TODO
-  return String(text);
+  const isPlaceholder = (value) => {
+    const candidate = value.trim();
+    return (
+      /^\[[A-Z0-9_]+\]$/i.test(candidate) ||
+      /^<[\s\S]*>$/.test(candidate) ||
+      /^x{4,}$/i.test(candidate) ||
+      /^\*{4,}$/.test(candidate) ||
+      /^\.\.\.+$/.test(candidate) ||
+      /^\$\{[\s\S]*\}$/.test(candidate) ||
+      /^(?:changeme|dummy|placeholder)$/i.test(candidate) ||
+      /^your-/i.test(candidate) ||
+      /^(?:process\.env(?:\.|$)|os\.environ(?:\.|$)|env\.)/i.test(candidate) ||
+      /^(.)\1{3,}$/s.test(candidate)
+    );
+  };
+
+  let result = String(text);
+  result = result.replace(
+    /-----BEGIN ([A-Z0-9 ]*PRIVATE KEY)-----[\s\S]*?(?:-----END \1-----|$)/g,
+    "[SECRET]",
+  );
+  result = result.replace(
+    /(?<![A-Za-z0-9])AKIA([A-Z0-9]{16})(?![A-Za-z0-9])/g,
+    (match, value) => (isPlaceholder(value) ? match : "[SECRET]"),
+  );
+  result = result.replace(
+    /(?<![A-Za-z0-9_])sk(?:-live-|_live_)([A-Za-z0-9]{12,})(?![A-Za-z0-9])/gi,
+    (match, value) => (isPlaceholder(value) ? match : "[SECRET]"),
+  );
+  result = result.replace(
+    /(?<![A-Za-z0-9_-])(eyJ[A-Za-z0-9_-]{5,})\.(eyJ[A-Za-z0-9_-]{5,})\.([A-Za-z0-9_-]{8,})(?![A-Za-z0-9_-])/g,
+    (match, first, second, signature) =>
+      [first, second, signature].some(isPlaceholder) ? match : "[SECRET]",
+  );
+  result = result.replace(
+    /\b([A-Za-z][A-Za-z0-9+.-]*:\/\/[^/\s:@]+:)([^@/\s?#]+)(@[^/\s?#]*)/g,
+    (match, prefix, password, suffix) =>
+      isPlaceholder(password) ? match : `${prefix}[SECRET]${suffix}`,
+  );
+  result = result.replace(
+    /(?<![A-Za-z0-9_-])INTERNAL-KEY-([A-Za-z0-9_-]+)(?![A-Za-z0-9_-])/g,
+    (match, value) => (isPlaceholder(value) ? match : "[SECRET]"),
+  );
+  result = result.replace(/(?<![A-Za-z0-9_-])ADMIN-\d+(?![A-Za-z0-9_-])/g, "[SECRET]");
+  return result.replace(
+    /(?<![A-Za-z0-9_-])[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.internal(?![A-Za-z0-9_-])/gi,
+    "[INTERNAL]",
+  );
 }
 
 function sanitizeOutput(text) {
-  // TODO
-  return String(text);
+  return redactSecrets(redactPII(String(text)))
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }
 
 function validateAction(raw, ctx) {
