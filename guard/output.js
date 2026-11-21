@@ -22,8 +22,104 @@ function sanitizeOutput(text) {
 }
 
 function validateAction(raw, ctx) {
-  // TODO: 지금은 모든 출력을 거절한다(안전하게 실패). 허용 규칙을 구현하세요.
-  return { ok: false, code: "TODO" };
+  const fail = (code) => ({ ok: false, code });
+  const isRecord = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
+
+  if (typeof raw !== "string") return fail("FORMAT");
+
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return fail("FORMAT");
+  }
+
+  if (!isRecord(parsed)) return fail("FORMAT");
+  const topKeys = Object.keys(parsed);
+  if (topKeys.some((key) => key !== "text" && key !== "tool_calls")) return fail("FORMAT");
+  if (typeof parsed.text !== "string" || Array.from(parsed.text).length > 2000) return fail("FORMAT");
+  if (Object.prototype.hasOwnProperty.call(parsed, "tool_calls") && !Array.isArray(parsed.tool_calls)) {
+    return fail("FORMAT");
+  }
+
+  const toolCalls = Object.prototype.hasOwnProperty.call(parsed, "tool_calls") ? parsed.tool_calls : [];
+  if (toolCalls.length > 3) return fail("TOO_MANY_CALLS");
+
+  const calls = [];
+  for (const call of toolCalls) {
+    if (!isRecord(call)) return fail("FORMAT");
+    const callKeys = Object.keys(call);
+    if (
+      !callKeys.includes("name") ||
+      typeof call.name !== "string" ||
+      call.name.trim() === "" ||
+      callKeys.some((key) => key !== "name" && key !== "args")
+    ) {
+      return fail("FORMAT");
+    }
+
+    let argKeys;
+    switch (call.name) {
+      case "search_product":
+        argKeys = ["query"];
+        break;
+      case "get_order_status":
+      case "refund_order":
+        argKeys = ["order_id"];
+        break;
+      case "apply_coupon":
+        argKeys = ["code", "percent"];
+        break;
+      default:
+        return fail("TOOL_NOT_ALLOWED");
+    }
+
+    if (!Object.prototype.hasOwnProperty.call(call, "args") || !isRecord(call.args)) {
+      return fail("ARG_INVALID");
+    }
+    const actualArgKeys = Object.keys(call.args);
+    if (
+      actualArgKeys.length !== argKeys.length ||
+      actualArgKeys.some((key) => !argKeys.includes(key))
+    ) {
+      return fail("ARG_INVALID");
+    }
+
+    if (call.name === "search_product") {
+      const query = call.args.query;
+      if (
+        typeof query !== "string" ||
+        Array.from(query).length < 1 ||
+        Array.from(query).length > 50 ||
+        !/^[\p{L}\p{N} -]+$/u.test(query) ||
+        query.includes("--")
+      ) {
+        return fail("ARG_INVALID");
+      }
+    } else if (call.name === "get_order_status" || call.name === "refund_order") {
+      const orderId = call.args.order_id;
+      const match = typeof orderId === "string" ? /^ORD-[0-9]{4}$/.exec(orderId) : null;
+      if (!match || match[0] !== orderId) return fail("ARG_INVALID");
+    } else if (call.name === "apply_coupon") {
+      const { code, percent } = call.args;
+      const match = typeof code === "string" ? /^[A-Z0-9]{4,12}$/.exec(code) : null;
+      if (
+        !match ||
+        match[0] !== code ||
+        !Number.isInteger(percent) ||
+        percent < 1 ||
+        percent > 100
+      ) {
+        return fail("ARG_INVALID");
+      }
+    }
+
+    const args = {};
+    for (const key of argKeys) args[key] = call.args[key];
+    calls.push({ name: call.name, args });
+  }
+
+  return { ok: true, text: parsed.text, calls };
 }
 
 module.exports = { redactPII, redactSecrets, sanitizeOutput, validateAction };
