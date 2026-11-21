@@ -22,6 +22,8 @@ function inspectInput(text, ctx = {}) {
 
   const disclosureKo =
     /(?:시스템[ \t]*(?:프롬프트|지침|메시지)|초기[ \t]*(?:지시|프롬프트))(?:[ \t]*(?:을|를|은|는|이|가|의))?[ \t]*(?:출력|알려|보여|공개|말해|유출|복사)(?:[ \t]*(?:해(?:[ \t]*(?:줘|주세요|요|라))?|하(?:[ \t]*(?:라|세요|십시오))?|줘|주세요|라|요))?/iu;
+  const disclosureMixedKo =
+    /\b(?:system[ \t]+(?:prompt|instructions?|message)|initial[ \t]+(?:prompt|instructions?))[ \t]*(?:을|를|은|는|이|가|의)?[ \t]*(?:출력|알려|보여|공개|말해|유출|복사)(?:[ \t]*(?:해(?:[ \t]*(?:줘|주세요|요|라))?|하(?:[ \t]*(?:라|세요|십시오))?|줘|주세요|라|요))?/iu;
   const disclosureEn =
     /\b(?:print|reveal|show|display|repeat|tell|leak|dump)\b(?:[ \t]+(?:out|me|the|your|my|our|hidden|initial|system)){0,3}[ \t]+(?:system[ \t]+(?:prompt|instructions?|message)|initial[ \t]+(?:instructions?|prompt))\b/i;
   const priorInstructionsKo =
@@ -31,6 +33,7 @@ function inspectInput(text, ctx = {}) {
 
   if (
     disclosureKo.test(normalized) ||
+    disclosureMixedKo.test(normalized) ||
     disclosureEn.test(normalized) ||
     priorInstructionsKo.test(normalized) ||
     priorInstructionsEn.test(normalized)
