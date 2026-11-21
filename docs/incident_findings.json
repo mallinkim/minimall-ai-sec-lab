@@ -1,1 +1,68 @@
-[]
+[
+  {
+    "incident": "INC-S1",
+    "rootCause": "indirect_injection",
+    "failedControls": [
+      "no_data_separation",
+      "no_taint_policy",
+      "no_output_validation",
+      "no_least_privilege",
+      "no_human_approval"
+    ],
+    "evidence": [
+      "L0079",
+      "L0080",
+      "L0081",
+      "C-198"
+    ],
+    "immediateActions": [
+      "disable_write_tools",
+      "quarantine_document",
+      "notify_affected_users",
+      "add_regression_test"
+    ],
+    "lessons": "외부 문서 입력은 신뢰된 지시와 분리하고, 오염된 요청에서는 발신 도구를 인가하지 않으며 사람 승인 없이 실행되지 않게 해야 한다."
+  },
+  {
+    "incident": "INC-S2",
+    "rootCause": "hardcoded_secret_committed",
+    "failedControls": [
+      "no_secret_scanning",
+      "no_monitoring_alert"
+    ],
+    "evidence": [
+      "C-204",
+      "L0020",
+      "L0052",
+      "L0054"
+    ],
+    "immediateActions": [
+      "revoke_and_rotate_key",
+      "purge_git_history",
+      "add_secret_scan_ci"
+    ],
+    "lessons": "비밀 탐지를 CI에서 강제하고, 키 노출 시 즉시 폐기·교체하며 외부 결제 이상 징후를 경보해야 한다."
+  },
+  {
+    "incident": "INC-S3",
+    "rootCause": "missing_ownership_check",
+    "failedControls": [
+      "no_ownership_check",
+      "no_monitoring_alert"
+    ],
+    "evidence": [
+      "C-221",
+      "L0064",
+      "L0065",
+      "L0069"
+    ],
+    "immediateActions": [
+      "block_user",
+      "fix_authz_in_code",
+      "add_enumeration_alert",
+      "notify_affected_users",
+      "add_regression_test"
+    ],
+    "lessons": "주문 소유권은 모델 지시가 아니라 서버 인가 코드에서 확인하고, 반복적인 비소유자 조회를 탐지해야 한다."
+  }
+]
