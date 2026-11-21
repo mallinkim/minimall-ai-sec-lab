@@ -8,7 +8,7 @@
 - [ ] AI 생성물의 표시와 이용자 고지 원칙
 - [x] AI 생성 코드의 리뷰 · 기록 규칙 (NFR-MAINT-02) — AI_USAGE_LOG(미션마다 기록), 계획표 승인, 사람의 독립 검증, REVIEW.md
 - [ ] 공급자(모델 · API) 약관과 데이터 처리 조건 검토
-- [ ] 사고 대응 절차와 연락 체계, 정기 훈련 (secops/playbook.json)
+- [x] 사고 대응 절차와 연락 체계, 정기 훈련 (secops/playbook.json) — 절차만: 경보 6종 playbook(owner · slaMin · steps) 100%. 정기 훈련은 아직 없음
 - [x] 구성원 교육과 정책의 정기 개정 — 개정 절차만: 로그의 다음에 바꿀 규칙, AGENTS.md 팀 규칙 갱신. 교육은 아직 없음
 
 ## AI 시스템 목록
